@@ -1,0 +1,33 @@
+[package]
+name = "samp-cmd-helper"
+version = "0.1.0"
+authors = ["Rinat Namazov <rinat.namazov@rinwares.com>"]
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+vmt-hook = "0.1.0"
+egui = "0.23.0"
+egui-d3d9 = { version = "0.3.6", git = "https://github.com/RinatNamazov/egui-d3d9" }
+
+[dependencies.windows]
+version = "0.51.1"
+features = [
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Direct3D9",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Console",
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemServices",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+]
