@@ -143,11 +143,11 @@ impl DXUTEditBox {
         func(self as *mut Self, text, false)
     }
 
-    pub fn get_text<'a>(&self) -> &'a str {
+    pub fn get_text<'a>(&self) -> String {
         unsafe {
             let func = DXUT_EDIT_BOX_GET_TEXT.unwrap();
             let c_str = func(self as *const Self);
-            CStr::from_ptr(c_str).to_str().unwrap()
+            CStr::from_ptr(c_str).to_string_lossy().to_string()
         }
     }
 

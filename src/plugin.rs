@@ -17,6 +17,7 @@ use std::ffi::CStr;
 use std::time::{Duration, SystemTime};
 
 use egui::{Color32, epaint::Shadow, FontData, FontDefinitions, FontFamily, FontId, FontTweak, Key, Label, RichText, Rounding, Sense, TextStyle};
+use egui_d3d9::EguiDx9;
 use vmt_hook::VTableHook;
 use windows::{
     core::{HRESULT, w},
@@ -30,8 +31,6 @@ use windows::{
     },
 };
 use windows::Win32::UI::WindowsAndMessaging::{CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_LBUTTONDOWN, WNDPROC};
-
-use egui_d3d9::EguiDx9;
 
 use crate::{gta, samp, sampfuncs, utils};
 use crate::sampfuncs::{CmdOwner, CommandType};
@@ -407,11 +406,11 @@ impl Plugin {
             for (i, module_name) in module_names.iter().enumerate() {
                 let module_name = module_name.clone().unwrap_or("unknown".to_string());
 
-                let cmd = CStr::from_bytes_until_nul(&input.command_name[i])
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string();
+                let cmd = if let Ok(cstr) = CStr::from_bytes_until_nul(&input.command_name[i]) {
+                    cstr.to_string_lossy().to_string()
+                } else {
+                    "unknown".to_string()
+                };
 
                 module_commands
                     .entry(module_name)
