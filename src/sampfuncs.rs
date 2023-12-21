@@ -62,6 +62,7 @@ impl ScmThread {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(i32)]
 pub enum CommandType {

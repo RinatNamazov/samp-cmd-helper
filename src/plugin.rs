@@ -146,14 +146,19 @@ impl Plugin {
                 }
             }
 
-            self.cmds.push(Category {
-                name: "SF".to_string(),
-                modules: sf_modules,
-            });
-            self.cmds.push(Category {
-                name: "CLEO".to_string(),
-                modules: cleo_modules,
-            });
+            if !sf_modules.is_empty() {
+                self.cmds.push(Category {
+                    name: "SF".to_string(),
+                    modules: sf_modules,
+                });
+            }
+
+            if !cleo_modules.is_empty() {
+                self.cmds.push(Category {
+                    name: "CLEO".to_string(),
+                    modules: cleo_modules,
+                });
+            }
         }
     }
 
@@ -237,23 +242,28 @@ impl Plugin {
         }
     }
 
-    fn setup_custom_fonts(ctx: &egui::Context) {
-        let mut fonts = FontDefinitions::default();
+    fn add_font(fonts: &mut FontDefinitions, name: &str, font: &'static [u8]) {
+        let name = name.to_string();
         let tweak = FontTweak::default();
         fonts.font_data.insert(
-            "Segoe UI Bold".to_owned(),
-            FontData::from_static(include_bytes!("C:\\Windows\\Fonts\\segoeuib.ttf")).tweak(tweak),
+            name.clone(),
+            FontData::from_static(font).tweak(tweak),
         );
         fonts
             .families
             .get_mut(&FontFamily::Proportional)
             .unwrap()
-            .insert(0, "Segoe UI Bold".to_owned());
+            .insert(0, name.clone());
         fonts
             .families
             .get_mut(&FontFamily::Monospace)
             .unwrap()
-            .push("Segoe UI Bold".to_owned());
+            .push(name);
+    }
+
+    fn setup_custom_fonts(ctx: &egui::Context) {
+        let mut fonts = FontDefinitions::default();
+        Self::add_font(&mut fonts, "Segoe UI Bold", include_bytes!("C:\\Windows\\Fonts\\segoeuib.ttf"));
         ctx.set_fonts(fonts);
     }
 
@@ -329,7 +339,7 @@ impl Plugin {
                             }
                             ui.end_row();
 
-                            for (i, category) in plugin.cmds.iter().enumerate() {
+                            for category in &plugin.cmds {
                                 ui.vertical(|ui| {
                                     for module in &category.modules {
                                         egui::CollapsingHeader::new(&module.name).default_open(true).show(ui, |ui| {
