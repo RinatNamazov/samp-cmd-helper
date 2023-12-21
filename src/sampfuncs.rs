@@ -111,39 +111,4 @@ impl SampFuncs {
         let get_chat_commands = unsafe { GET_CHAT_COMMANDS.unwrap() };
         get_chat_commands()
     }
-
-    /*pub fn get_chat_commands_grouped(&self) -> HashMap<String, (CommandType, Vec<String>)> {
-        let get_chat_commands = unsafe { GET_CHAT_COMMANDS.unwrap() };
-        let sfcmds = get_chat_commands();
-
-        let mut commands = HashMap::new();
-
-        for cmd in &sfcmds {
-            unsafe {
-                let owner_name = match cmd.owner_type {
-                    CommandType::SCRIPT => {
-                        let script = &*(cmd.owner as *const ScmThread);
-                        (self.get_scm_thread_name)(script)
-                            .to_string()
-                            .trim_end()
-                            .to_string()
-                            + ".cs"
-                    }
-                    CommandType::PLUGIN => {
-                        let plugin = &*(cmd.owner as *const SfPluginInfo);
-                        (self.get_plugin_name)(plugin).to_string()
-                    }
-                    _ => "unknown".to_string(),
-                };
-
-                commands
-                    .entry(owner_name)
-                    .or_insert((cmd.owner_type, Vec::new()))
-                    .1
-                    .push(cmd.name.to_string());
-            }
-        }
-
-        commands
-    }*/
 }
