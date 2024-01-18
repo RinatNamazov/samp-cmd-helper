@@ -31,6 +31,7 @@ use windows::{
 use windows::Win32::UI::WindowsAndMessaging::{CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_LBUTTONDOWN, WNDPROC};
 
 use crate::{gta, samp, sampfuncs, utils};
+use crate::errors::Error;
 use crate::sampfuncs::{CmdOwner, CommandType};
 
 type FnPresent = extern "stdcall" fn(
@@ -486,7 +487,12 @@ unsafe fn initialize_plugin() {
         InitState::AfterSampInit => {
             if let Some(plugin) = PLUGIN.as_mut() {
                 samp::initialize(plugin.samp_base_address, plugin.samp_version);
-                let _ = sampfuncs::initialize();
+
+                // We can work without this module.
+                if let Err(e) = sampfuncs::initialize() {
+                    eprintln!("sampfuncs::initialize: {}", e);
+                }
+
                 plugin.post_initialize();
             }
             STATE = InitState::Initialized;
@@ -495,6 +501,7 @@ unsafe fn initialize_plugin() {
             static mut TIME: OnceCell<SystemTime> = OnceCell::new();
             let time = TIME.get_or_init(|| SystemTime::now());
 
+            // We wait for some time during which other plugins will most likely register their commands.
             if time.elapsed().unwrap() > Duration::from_secs(3) {
                 if let Some(plugin) = PLUGIN.as_mut() {
                     plugin.parse_commands();
@@ -506,24 +513,24 @@ unsafe fn initialize_plugin() {
     }
 }
 
+// This function is called cyclically in the game.
 unsafe extern "C" fn hk_defined_state() {
     initialize_plugin();
     FUNC_GTA_DEFINED_STATE.unwrap()();
 }
 
-pub fn initialize() {
+pub fn initialize() -> Result<(), Error> {
     const ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE: usize = 0x53EA8E;
 
-    let current_byte = unsafe { std::ptr::read(ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE as *const u8) };
+    let current_byte = unsafe { *(ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE as *const u8) };
     if current_byte != 0xE8 /* call opcode */ {
-        panic!("samp-cmd-helper: the plugin has detected that it's maybe loaded into the wrong game.");
+        return Err(Error::MaybeInvalidGameOrPluginConflicting);
     }
 
-    let samp_base_address = unsafe { GetModuleHandleW(w!("samp.dll")).unwrap() };
-    if samp_base_address.is_invalid() {
-        panic!("samp-cmd-helper: the plugin didn't detect the loaded 'samp.dll'.");
-    }
-    let samp_base_address = samp_base_address.0 as usize;
+    let samp_base_address = match unsafe { GetModuleHandleW(w!("samp.dll")) } {
+        Ok(handle) => handle.0 as usize,
+        Err(e) => return Err(Error::SampNotLoaded(e)),
+    };
 
     match samp::get_version(samp_base_address) {
         Some(samp_version) => unsafe {
@@ -531,7 +538,9 @@ pub fn initialize() {
 
             FUNC_GTA_DEFINED_STATE = Some(std::mem::transmute(utils::extract_call_target_address(ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE)));
             utils::patch_call_address(ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE, hk_defined_state as usize);
+
+            Ok(())
         }
-        None => panic!("samp-cmd-helper: the plugin didn't detect a compatible version of 'samp.dll'."),
+        None => Err(Error::IncompatibleSampVersion),
     }
 }
