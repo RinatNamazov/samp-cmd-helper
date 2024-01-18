@@ -4,12 +4,10 @@
  *  LICENSE:        See LICENSE in the top level directory
  *  FILE:           plugin.rs
  *  DESCRIPTION:    Plugin
- *  COPYRIGHT:      (c) 2023 RINWARES <rinwares.com>
+ *  COPYRIGHT:      (c) 2023-2024 RINWARES <rinwares.com>
  *  AUTHOR:         Rinat Namazov <rinat.namazov@rinwares.com>
  *
  *****************************************************************************/
-
-#![allow(warnings)]
 
 use std::cell::OnceCell;
 use std::collections::HashMap;
@@ -56,42 +54,50 @@ static mut FUNC_GTA_DEFINED_STATE: Option<unsafe extern "C" fn()> = None;
 
 static mut PLUGIN: Option<Plugin> = None;
 
-#[derive(Debug)]
-struct Command {
-    name: String,
-    // Optional
-    description: String,
-}
+type CommandMap = HashMap<String, String>;
+type ModuleMap = HashMap<String, CommandMap>;
 
-impl Command {
-    pub fn new(name: String) -> Self {
-        Self { name: "/".to_string() + &name, description: String::default() }
-    }
-}
-
-// Plugin / Script
-#[derive(Debug)]
-struct Module {
-    name: String,
-    commands: Vec<Command>,
-}
-
-impl Module {
-    pub fn new(name: String, commands: Vec<Command>) -> Self {
-        Self { name, commands }
-    }
-}
-
-#[derive(Debug)]
 struct Category {
+    is_visible: bool,
     name: String,
-    modules: Vec<Module>,
+    modules: ModuleMap,
+}
+
+struct Categories {
+    samp: Category,
+    sf: Category,
+    cleo: Category,
+}
+
+enum CategoryKey {
+    Samp,
+    SfPlugin,
+    Cleo,
+}
+
+impl Categories {
+    pub fn is_empty(&self) -> bool {
+        self.samp.modules.is_empty() && self.sf.modules.is_empty() && self.cleo.modules.is_empty()
+    }
+}
+
+impl std::ops::Index<&CategoryKey> for Categories {
+    type Output = Category;
+
+    fn index(&self, index: &CategoryKey) -> &Self::Output {
+        match index {
+            CategoryKey::Samp => &self.samp,
+            CategoryKey::SfPlugin => &self.sf,
+            CategoryKey::Cleo => &self.cleo,
+        }
+    }
 }
 
 pub struct Plugin {
     d3d9_hook: Option<VTableHook<IDirect3DDevice9>>,
     gui: Option<EguiDx9<()>>,
-    cmds: Vec<Category>,
+    commands: Categories,
+    commands_order: [CategoryKey; 3],
     original_wnd_proc: Option<WNDPROC>,
     original_reset: Option<FnReset>,
     original_present: Option<FnPresent>,
@@ -104,7 +110,12 @@ impl Plugin {
         Self {
             d3d9_hook: None,
             gui: None,
-            cmds: Vec::new(),
+            commands: Categories {
+                samp: Category { is_visible: false, name: "SA-MP".to_string(), modules: ModuleMap::new() },
+                sf: Category { is_visible: false, name: "SF".to_string(), modules: ModuleMap::new() },
+                cleo: Category { is_visible: false, name: "CLEO".to_string(), modules: ModuleMap::new() },
+            },
+            commands_order: [CategoryKey::Samp, CategoryKey::SfPlugin, CategoryKey::Cleo],
             original_wnd_proc: None,
             original_reset: None,
             original_present: None,
@@ -121,43 +132,44 @@ impl Plugin {
         }
     }
 
+    fn cmd_with_prefix(command: &str) -> String {
+        "/".to_string() + command
+    }
+
     pub fn parse_commands(&mut self) {
         // Todo: Prefer placing hooks on command registration and removal rather than parsing them once.
 
         let samp_cmds: HashMap<String, Vec<String>> = self.get_samp_commands_grouped_by_module();
         let samp_modules = samp_cmds
             .into_iter()
-            .map(|(module, cmds)| Module::new(module, cmds.into_iter().map(|(cmd)| Command::new(cmd)).collect()))
+            .map(|(module, cmds)| (module, cmds.into_iter().map(|cmd| (Self::cmd_with_prefix(&cmd), String::default())).collect()))
             .collect();
-        self.cmds.push(Category {
-            name: "SA-MP".to_string(),
-            modules: samp_modules,
-        });
+        let samp = &mut self.commands.samp;
+        samp.modules = samp_modules;
+        samp.is_visible = true;
 
         if let Some(sf_cmds) = self.get_sampfuncs_commands_grouped() {
-            let mut sf_modules = Vec::new();
-            let mut cleo_modules = Vec::new();
+            let mut sf_modules = ModuleMap::new();
+            let mut cleo_modules = ModuleMap::new();
 
             for (module, v) in sf_cmds {
                 match v.0 {
-                    CommandType::PLUGIN => sf_modules.push(Module::new(module, v.1.into_iter().map(|(cmd)| Command::new(cmd)).collect())),
-                    CommandType::SCRIPT => cleo_modules.push(Module::new(module, v.1.into_iter().map(|(cmd)| Command::new(cmd)).collect())),
+                    CommandType::PLUGIN => { sf_modules.entry(module).or_insert(v.1.into_iter().map(|cmd| (Self::cmd_with_prefix(&cmd), String::default())).collect()); }
+                    CommandType::SCRIPT => { cleo_modules.entry(module).or_insert(v.1.into_iter().map(|cmd| (Self::cmd_with_prefix(&cmd), String::default())).collect()); }
                     CommandType::NOPE => {}
                 }
             }
 
             if !sf_modules.is_empty() {
-                self.cmds.push(Category {
-                    name: "SF".to_string(),
-                    modules: sf_modules,
-                });
+                let sf = &mut self.commands.sf;
+                sf.modules = sf_modules;
+                sf.is_visible = true;
             }
 
             if !cleo_modules.is_empty() {
-                self.cmds.push(Category {
-                    name: "CLEO".to_string(),
-                    modules: cleo_modules,
-                });
+                let cleo = &mut self.commands.cleo;
+                cleo.modules = cleo_modules;
+                cleo.is_visible = true;
             }
         }
     }
@@ -312,8 +324,10 @@ impl Plugin {
 
         let chat_input = input.edit_box().get_text();
 
+        let plugin = unsafe { PLUGIN.as_ref().unwrap_unchecked() };
         let chat_contains_cmd = chat_input.starts_with('/');
-        if input.total_recall == 0 && !chat_contains_cmd {
+        // Don't draw empty list.
+        if (input.total_recall == 0 && !chat_contains_cmd) || (chat_contains_cmd && plugin.commands.is_empty()) {
             return;
         }
 
@@ -330,39 +344,43 @@ impl Plugin {
                     egui::Grid::new("cmds")
                         .min_col_width(150.0)
                         .show(ui, |ui| {
-                            let plugin = unsafe { PLUGIN.as_ref().unwrap_unchecked() };
-
-                            for category in &plugin.cmds {
-                                ui.vertical_centered(|ui| {
-                                    ui.strong(&category.name);
-                                });
+                            for category_key in &plugin.commands_order {
+                                let category = &plugin.commands[category_key];
+                                if category.is_visible {
+                                    ui.vertical_centered(|ui| {
+                                        ui.strong(&category.name);
+                                    });
+                                }
                             }
                             ui.end_row();
 
-                            for category in &plugin.cmds {
-                                ui.vertical(|ui| {
-                                    for module in &category.modules {
-                                        egui::CollapsingHeader::new(&module.name).default_open(true).show(ui, |ui| {
-                                            for cmd in &module.commands {
-                                                let text = if chat_input.is_empty() || cmd.name.starts_with(&chat_input) {
-                                                    RichText::new(&cmd.name)
-                                                } else {
-                                                    RichText::new(&cmd.name).weak()
-                                                };
+                            for category_key in &plugin.commands_order {
+                                let category = &plugin.commands[category_key];
+                                if category.is_visible {
+                                    ui.vertical(|ui| {
+                                        for (name, commands) in &category.modules {
+                                            egui::CollapsingHeader::new(name).default_open(true).show(ui, |ui| {
+                                                for (cmd, description) in commands {
+                                                    let text = if chat_input.is_empty() || cmd.starts_with(&chat_input) {
+                                                        RichText::new(cmd)
+                                                    } else {
+                                                        RichText::new(cmd).weak()
+                                                    };
 
-                                                let label = ui.add(Label::new(text).sense(Sense::click()));
+                                                    let label = ui.add(Label::new(text).sense(Sense::click()));
 
-                                                if label.clicked() {
-                                                    input.edit_box().set_text(cmd.name.as_str());
+                                                    if label.clicked() {
+                                                        input.edit_box().set_text(cmd.as_str());
+                                                    }
+
+                                                    if !description.is_empty() {
+                                                        label.on_hover_text(description);
+                                                    }
                                                 }
-
-                                                if !cmd.description.is_empty() {
-                                                    label.on_hover_text(&cmd.description);
-                                                }
-                                            }
-                                        });
-                                    }
-                                });
+                                            });
+                                        }
+                                    });
+                                }
                             }
                             ui.end_row();
                         });
