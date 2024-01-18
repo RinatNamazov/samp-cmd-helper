@@ -15,11 +15,11 @@ LegalCopyright = "Copyright © 2023-2024 RINWARES, Rinat Namazov"
 
 [dependencies]
 vmt-hook = "0.2.0"
-egui = "0.23.0"
-egui-d3d9 = { version = "0.3.6", git = "https://github.com/RinatNamazov/egui-d3d9" }
+egui = "0.25.0"
+egui-d3d9 = { version = "0.3.7", git = "https://github.com/RinatNamazov/egui-d3d9" }
 
 [dependencies.windows]
-version = "0.51.1"
+version = "0.52.0"
 features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Dxgi_Common",
