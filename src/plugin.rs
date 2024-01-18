@@ -183,31 +183,28 @@ impl Plugin {
     }
 
     unsafe fn install_d3d9_hooks(&mut self) {
-        let device = gta::get_d3d9_device();
-        let hook = VTableHook::with_count(device, 119);
+        let hook = VTableHook::with_count(gta::get_d3d9_device(), 119);
 
         self.original_reset = Some(std::mem::transmute(hook.get_original_method(16)));
         self.original_present = Some(std::mem::transmute(hook.get_original_method(17)));
 
-        hook.hook_method(16, Self::hk_reset as usize);
-        hook.hook_method(17, Self::hk_present as usize);
+        hook.replace_method(16, Self::hk_reset as usize);
+        hook.replace_method(17, Self::hk_present as usize);
 
         self.d3d9_hook = Some(hook);
     }
 
     fn init_egui(&mut self) {
-        // *mut IDirect3DDevice9 is the same as IDirect3DDevice9.
-        let device = unsafe { std::mem::transmute(gta::get_d3d9_device()) };
-        let window = gta::get_window_handle();
+        if let Some(device_hook) = &self.d3d9_hook {
+            let gui = EguiDx9::init(device_hook.object(), gta::get_window_handle(), Self::render_ui, (), true);
 
-        let gui = EguiDx9::init(&device, window, Self::render_ui, (), true);
+            let ctx = gui.ctx();
+            Self::setup_custom_fonts(ctx);
+            Self::configure_text_styles(ctx);
+            Self::configure_visuals(ctx);
 
-        let ctx = gui.ctx();
-        Self::setup_custom_fonts(ctx);
-        Self::configure_text_styles(ctx);
-        Self::configure_visuals(ctx);
-
-        self.gui = Some(gui);
+            self.gui = Some(gui);
+        }
     }
 
     unsafe extern "stdcall" fn hk_reset(

@@ -14,7 +14,7 @@ OriginalFilename = "samp-cmd-helper.asi"
 LegalCopyright = "Copyright © 2023-2024 RINWARES, Rinat Namazov"
 
 [dependencies]
-vmt-hook = "0.1.0"
+vmt-hook = "0.2.0"
 egui = "0.23.0"
 egui-d3d9 = { version = "0.3.6", git = "https://github.com/RinatNamazov/egui-d3d9" }
 

@@ -337,9 +337,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "vmt-hook"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "544413984c1e5859db996a6fd3738e10d1b3e74c39e4bd37c888f6c6d81359b4"
+checksum = "67abe4b64937a92ac748c17eb5d5a7781696193bd379c28641d5efe1d572675f"
 
 [[package]]
 name = "winapi"

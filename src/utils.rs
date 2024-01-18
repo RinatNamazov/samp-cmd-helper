@@ -4,7 +4,7 @@
  *  LICENSE:        See LICENSE in the top level directory
  *  FILE:           utils.rs
  *  DESCRIPTION:    Utils
- *  COPYRIGHT:      (c) 2023 RINWARES <rinwares.com>
+ *  COPYRIGHT:      (c) 2023-2024 RINWARES <rinwares.com>
  *  AUTHOR:         Rinat Namazov <rinat.namazov@rinwares.com>
  *
  *****************************************************************************/
@@ -35,17 +35,16 @@ pub fn get_entry_point(base_address: usize) -> u32 {
     }
 }
 
-pub unsafe fn patch_pointer(address: usize, value: usize) {
-    let address = address as *const c_void;
-    let size = std::mem::size_of::<usize>();
+pub unsafe fn write_memory<T>(address: usize, value: T) {
+    let size = std::mem::size_of::<T>();
     let mut vp = PAGE_EXECUTE_READWRITE;
-    VirtualProtect(address, size, vp, &mut vp).unwrap();
-    *(address as *mut usize) = value;
-    VirtualProtect(address, size, vp, &mut vp).unwrap();
+    VirtualProtect(address as *const c_void, size, vp, &mut vp).unwrap();
+    std::ptr::write(address as *mut T, value);
+    VirtualProtect(address as *const c_void, size, vp, &mut vp).unwrap();
 }
 
 pub unsafe fn patch_call_address(address: usize, value: usize) {
-    patch_pointer(address + 1, value - address - 1 - 4);
+    write_memory(address + 1, value - address - 1 - 4);
 }
 
 pub unsafe fn extract_call_target_address(address: usize) -> usize {
@@ -80,7 +79,7 @@ pub fn find_module_name_that_owns_address_list(
             if module_name.is_none() {
                 let address = address as *const u8;
                 if address > module_entry32.modBaseAddr && address < unsafe { module_entry32.modBaseAddr.add(module_entry32.modBaseSize as usize) } {
-                    *module_name = Some(u16_slice_to_string(&module_entry32.szModule));
+                    *module_name = Some(String::from_utf16_lossy(&module_entry32.szModule));
                 }
             }
         }
@@ -95,12 +94,4 @@ pub fn find_module_name_that_owns_address_list(
     }
 
     Some(module_names)
-}
-
-pub fn u16_slice_to_string(slice: &[u16]) -> String {
-    slice
-        .iter()
-        .take_while(|&&c| c != 0)
-        .map(|&c| char::from_u32(c as u32).unwrap_or('?'))
-        .collect()
 }
