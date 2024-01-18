@@ -14,7 +14,6 @@ use std::collections::HashMap;
 use std::ffi::CStr;
 use std::time::{Duration, SystemTime};
 
-use egui::{Color32, epaint::Shadow, FontData, FontDefinitions, FontFamily, FontId, FontTweak, Key, Label, RichText, Rounding, Sense, TextStyle};
 use egui_d3d9::EguiDx9;
 use vmt_hook::VTableHook;
 use windows::{
@@ -31,7 +30,9 @@ use windows::{
 use windows::Win32::UI::WindowsAndMessaging::{CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_LBUTTONDOWN, WNDPROC};
 
 use crate::{gta, samp, sampfuncs, utils};
+use crate::cmd_storage::{Categories, Category, CategoryKey, cmd_with_prefix, ModuleMap};
 use crate::errors::Error;
+use crate::gui::Ui;
 use crate::sampfuncs::{CmdOwner, CommandType};
 
 type FnPresent = extern "stdcall" fn(
@@ -55,50 +56,10 @@ static mut FUNC_GTA_DEFINED_STATE: Option<unsafe extern "C" fn()> = None;
 
 static mut PLUGIN: Option<Plugin> = None;
 
-type CommandMap = HashMap<String, String>;
-type ModuleMap = HashMap<String, CommandMap>;
-
-struct Category {
-    is_visible: bool,
-    name: String,
-    modules: ModuleMap,
-}
-
-struct Categories {
-    samp: Category,
-    sf: Category,
-    cleo: Category,
-}
-
-enum CategoryKey {
-    Samp,
-    SfPlugin,
-    Cleo,
-}
-
-impl Categories {
-    pub fn is_empty(&self) -> bool {
-        self.samp.modules.is_empty() && self.sf.modules.is_empty() && self.cleo.modules.is_empty()
-    }
-}
-
-impl std::ops::Index<&CategoryKey> for Categories {
-    type Output = Category;
-
-    fn index(&self, index: &CategoryKey) -> &Self::Output {
-        match index {
-            CategoryKey::Samp => &self.samp,
-            CategoryKey::SfPlugin => &self.sf,
-            CategoryKey::Cleo => &self.cleo,
-        }
-    }
-}
-
 pub struct Plugin {
     d3d9_hook: Option<VTableHook<IDirect3DDevice9>>,
-    gui: Option<EguiDx9<()>>,
+    gui: Option<EguiDx9<Ui>>,
     commands: Categories,
-    commands_order: [CategoryKey; 3],
     original_wnd_proc: Option<WNDPROC>,
     original_reset: Option<FnReset>,
     original_present: Option<FnPresent>,
@@ -112,11 +73,11 @@ impl Plugin {
             d3d9_hook: None,
             gui: None,
             commands: Categories {
-                samp: Category { is_visible: false, name: "SA-MP".to_string(), modules: ModuleMap::new() },
-                sf: Category { is_visible: false, name: "SF".to_string(), modules: ModuleMap::new() },
-                cleo: Category { is_visible: false, name: "CLEO".to_string(), modules: ModuleMap::new() },
+                order: [CategoryKey::Samp, CategoryKey::SfPlugin, CategoryKey::Cleo],
+                samp: Category::new("SA-MP".to_string()),
+                sf: Category::new("SF".to_string()),
+                cleo: Category::new("CLEO".to_string()),
             },
-            commands_order: [CategoryKey::Samp, CategoryKey::SfPlugin, CategoryKey::Cleo],
             original_wnd_proc: None,
             original_reset: None,
             original_present: None,
@@ -125,16 +86,26 @@ impl Plugin {
         }
     }
 
+    pub fn get<'a>() -> &'a mut Plugin {
+        unsafe {
+            if cfg!(debug_assertions) {
+                PLUGIN.as_mut().unwrap()
+            } else {
+                PLUGIN.as_mut().unwrap_unchecked()
+            }
+        }
+    }
+
     pub fn post_initialize(&mut self) {
         unsafe {
             self.install_wnd_proc();
             self.install_d3d9_hooks();
-            self.init_egui();
+            self.init_ui();
         }
     }
 
-    fn cmd_with_prefix(command: &str) -> String {
-        "/".to_string() + command
+    pub fn commands(&self) -> &Categories {
+        &self.commands
     }
 
     pub fn parse_commands(&mut self) {
@@ -143,7 +114,7 @@ impl Plugin {
         let samp_cmds: HashMap<String, Vec<String>> = self.get_samp_commands_grouped_by_module();
         let samp_modules = samp_cmds
             .into_iter()
-            .map(|(module, cmds)| (module, cmds.into_iter().map(|cmd| (Self::cmd_with_prefix(&cmd), String::default())).collect()))
+            .map(|(module, cmds)| (module, cmds.iter().map(|cmd| (cmd_with_prefix(cmd), String::default())).collect()))
             .collect();
         let samp = &mut self.commands.samp;
         samp.modules = samp_modules;
@@ -153,10 +124,16 @@ impl Plugin {
             let mut sf_modules = ModuleMap::new();
             let mut cleo_modules = ModuleMap::new();
 
+            fn convert(modules: &mut ModuleMap, module: String, cmds: Vec<String>) {
+                modules
+                    .entry(module)
+                    .or_insert(cmds.iter().map(|cmd| (cmd_with_prefix(cmd), String::default())).collect());
+            }
+
             for (module, v) in sf_cmds {
                 match v.0 {
-                    CommandType::PLUGIN => { sf_modules.entry(module).or_insert(v.1.into_iter().map(|cmd| (Self::cmd_with_prefix(&cmd), String::default())).collect()); }
-                    CommandType::SCRIPT => { cleo_modules.entry(module).or_insert(v.1.into_iter().map(|cmd| (Self::cmd_with_prefix(&cmd), String::default())).collect()); }
+                    CommandType::PLUGIN => convert(&mut sf_modules, module, v.1),
+                    CommandType::SCRIPT => convert(&mut cleo_modules, module, v.1),
                     CommandType::NOPE => {}
                 }
             }
@@ -194,14 +171,13 @@ impl Plugin {
         self.d3d9_hook = Some(hook);
     }
 
-    fn init_egui(&mut self) {
+    fn init_ui(&mut self) {
         if let Some(device_hook) = &self.d3d9_hook {
-            let gui = EguiDx9::init(device_hook.object(), gta::get_window_handle(), Self::render_ui, (), true);
+            let gui = EguiDx9::<Ui>::init(
+                device_hook.object(), gta::get_window_handle(),
+                Ui::render_ui, Ui::new(), true);
 
-            let ctx = gui.ctx();
-            Self::setup_custom_fonts(ctx);
-            Self::configure_text_styles(ctx);
-            Self::configure_visuals(ctx);
+            Ui::init_style(gui.ctx());
 
             self.gui = Some(gui);
         }
@@ -211,7 +187,7 @@ impl Plugin {
         device: IDirect3DDevice9,
         presentation_parameters: *const D3DPRESENT_PARAMETERS,
     ) -> HRESULT {
-        let plugin = PLUGIN.as_mut().unwrap_unchecked();
+        let plugin = Plugin::get();
         let gui = plugin.gui.as_mut().unwrap_unchecked();
         gui.pre_reset();
 
@@ -226,7 +202,7 @@ impl Plugin {
         dest_window_override: HWND,
         dirty_region: *const RGNDATA,
     ) -> HRESULT {
-        let plugin = PLUGIN.as_mut().unwrap_unchecked();
+        let plugin = Plugin::get();
         let gui = plugin.gui.as_mut().unwrap_unchecked();
         gui.present(&device);
 
@@ -240,7 +216,7 @@ impl Plugin {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> LRESULT {
-        let plugin = PLUGIN.as_mut().unwrap_unchecked();
+        let plugin = Plugin::get();
         let gui = plugin.gui.as_mut().unwrap_unchecked();
         gui.wnd_proc(msg, wparam, lparam);
 
@@ -250,174 +226,6 @@ impl Plugin {
         } else {
             CallWindowProcA(plugin.original_wnd_proc.unwrap_unchecked(), hwnd, msg, wparam, lparam)
         }
-    }
-
-    fn add_font(fonts: &mut FontDefinitions, name: &str, font: &'static [u8]) {
-        let name = name.to_string();
-        let tweak = FontTweak::default();
-        fonts.font_data.insert(
-            name.clone(),
-            FontData::from_static(font).tweak(tweak),
-        );
-        fonts
-            .families
-            .get_mut(&FontFamily::Proportional)
-            .unwrap()
-            .insert(0, name.clone());
-        fonts
-            .families
-            .get_mut(&FontFamily::Monospace)
-            .unwrap()
-            .push(name);
-    }
-
-    fn setup_custom_fonts(ctx: &egui::Context) {
-        let mut fonts = FontDefinitions::default();
-        Self::add_font(&mut fonts, "Segoe UI Bold", include_bytes!("C:\\Windows\\Fonts\\segoeuib.ttf"));
-        ctx.set_fonts(fonts);
-    }
-
-    fn configure_text_styles(ctx: &egui::Context) {
-        use FontFamily::{Monospace, Proportional};
-
-        let mut style = (*ctx.style()).clone();
-        style.text_styles = [
-            (TextStyle::Heading, FontId::new(24.0, Proportional)),
-            (TextStyle::Body, FontId::new(16.5, Proportional)),
-            (TextStyle::Monospace, FontId::new(16.0, Monospace)),
-            (TextStyle::Button, FontId::new(16.5, Proportional)),
-            (TextStyle::Small, FontId::new(8.0, Proportional)),
-        ].into();
-        ctx.set_style(style);
-    }
-
-    fn configure_visuals(ctx: &egui::Context) {
-        let mut visuals = ctx.style().visuals.clone();
-        visuals.window_shadow = Shadow::NONE;
-        visuals.window_fill = Color32::from_rgba_premultiplied(20, 20, 20, 200);
-        visuals.window_rounding = Rounding::same(10.);
-        ctx.set_visuals(visuals);
-    }
-
-    fn render_ui(ctx: &egui::Context, _: &mut ()) {
-        if gta::is_gta_menu_active() {
-            return;
-        }
-
-        // SA-MP keys.
-        // Todo: It might be better to read the key from memory, in case there is a plugin to change the keys.
-        if ctx.input(|i| i.key_down(Key::F5) || i.key_down(Key::F10)) {
-            return;
-        }
-
-        let input = match samp::Input::get() {
-            Some(v) => v,
-            None => return,
-        };
-
-        // Draw only if chat input is open.
-        if !input.enabled.as_bool() {
-            return;
-        }
-
-        let chat_input = input.edit_box().get_text();
-
-        let plugin = unsafe { PLUGIN.as_ref().unwrap_unchecked() };
-        let chat_contains_cmd = chat_input.starts_with('/');
-        // Don't draw empty list.
-        if (input.total_recall == 0 && !chat_contains_cmd) || (chat_contains_cmd && plugin.commands.is_empty()) {
-            return;
-        }
-
-        let pos = input.edit_box().position;
-        let pos = [pos[0] as f32, (pos[1] + input.edit_box().height + 5) as f32];
-
-        egui::containers::Window::new("Command Helper")
-            .fixed_pos(pos)
-            .title_bar(false)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                if chat_contains_cmd {
-                    egui::Grid::new("cmds")
-                        .min_col_width(150.0)
-                        .show(ui, |ui| {
-                            for category_key in &plugin.commands_order {
-                                let category = &plugin.commands[category_key];
-                                if category.is_visible {
-                                    ui.vertical_centered(|ui| {
-                                        ui.strong(&category.name);
-                                    });
-                                }
-                            }
-                            ui.end_row();
-
-                            for category_key in &plugin.commands_order {
-                                let category = &plugin.commands[category_key];
-                                if category.is_visible {
-                                    ui.vertical(|ui| {
-                                        for (name, commands) in &category.modules {
-                                            egui::CollapsingHeader::new(name).default_open(true).show(ui, |ui| {
-                                                for (cmd, description) in commands {
-                                                    let text = if chat_input.is_empty() || cmd.starts_with(&chat_input) {
-                                                        RichText::new(cmd)
-                                                    } else {
-                                                        RichText::new(cmd).weak()
-                                                    };
-
-                                                    let label = ui.add(Label::new(text).sense(Sense::click()));
-
-                                                    if label.clicked() {
-                                                        input.edit_box().set_text(cmd.as_str());
-                                                    }
-
-                                                    if !description.is_empty() {
-                                                        label.on_hover_text(description);
-                                                    }
-                                                }
-                                            });
-                                        }
-                                    });
-                                }
-                            }
-                            ui.end_row();
-                        });
-                } else {
-                    ui.vertical_centered(|ui| {
-                        ui.strong("Recalls");
-                    });
-
-                    ui.indent(ui.id(), |ui| {
-                        for i in 0..input.total_recall as usize {
-                            if let Ok(recall) = CStr::from_bytes_until_nul(&input.recall_buffer[i]) {
-                                if let Ok(text) = recall.to_str() {
-                                    let text = if input.current_recall == -1 || i == input.current_recall as usize {
-                                        RichText::new(text)
-                                    } else {
-                                        RichText::new(text).weak()
-                                    };
-
-                                    let label = ui.add(Label::new(text).sense(Sense::click()));
-
-                                    if label.clicked() {
-                                        input.current_recall = i as i32;
-                                        input.edit_box().set_text_raw(recall.as_ptr());
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-
-                ui.separator();
-                ui.vertical_centered(|ui| {
-                    ui.strong("Copyright © Rinat Namazov")
-                        .on_hover_ui(|ui| {
-                            ui.label(concat!("SA-MP Command Helper v", env!("CARGO_PKG_VERSION")));
-                            ui.label("https://rinwares.com");
-                        });
-                });
-            });
     }
 
     fn get_samp_commands_grouped_by_module(&self) -> HashMap<String, Vec<String>> {
@@ -482,16 +290,17 @@ unsafe fn initialize_plugin() {
             STATE = InitState::AfterSampInit;
         }
         InitState::AfterSampInit => {
-            if let Some(plugin) = PLUGIN.as_mut() {
-                samp::initialize(plugin.samp_base_address, plugin.samp_version);
+            let plugin = Plugin::get();
 
-                // We can work without this module.
-                if let Err(e) = sampfuncs::initialize() {
-                    eprintln!("sampfuncs::initialize: {}", e);
-                }
+            samp::initialize(plugin.samp_base_address, plugin.samp_version);
 
-                plugin.post_initialize();
+            // We can work without this module.
+            if let Err(e) = sampfuncs::initialize() {
+                eprintln!("sampfuncs::initialize: {}", e);
             }
+
+            plugin.post_initialize();
+
             STATE = InitState::Initialized;
         }
         InitState::Initialized => {
@@ -500,9 +309,9 @@ unsafe fn initialize_plugin() {
 
             // We wait for some time during which other plugins will most likely register their commands.
             if time.elapsed().unwrap() > Duration::from_secs(3) {
-                if let Some(plugin) = PLUGIN.as_mut() {
-                    plugin.parse_commands();
-                }
+                let plugin = Plugin::get();
+                plugin.parse_commands();
+
                 STATE = InitState::Nothing;
             }
         }

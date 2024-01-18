@@ -23,6 +23,8 @@ mod errors;
 mod gta;
 mod utils;
 mod cppstd;
+mod gui;
+mod cmd_storage;
 
 #[no_mangle]
 extern "stdcall" fn DllMain(instance: HMODULE, reason: u32, _reserved: *mut ()) -> BOOL {
