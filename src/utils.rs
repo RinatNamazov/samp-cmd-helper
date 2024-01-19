@@ -10,20 +10,21 @@
  *****************************************************************************/
 
 use core::ffi::c_void;
-
 use windows::Win32::{
     Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
     System::{
-        Diagnostics::ToolHelp::{
-            CreateToolhelp32Snapshot, Module32FirstW, Module32NextW, MODULEENTRY32W,
-            TH32CS_SNAPMODULE,
+        Diagnostics::{
+            Debug::IMAGE_NT_HEADERS32,
+            ToolHelp::{
+                CreateToolhelp32Snapshot, Module32FirstW, Module32NextW, MODULEENTRY32W,
+                TH32CS_SNAPMODULE,
+            },
         },
-        Memory::{PAGE_EXECUTE_READWRITE, VirtualProtect},
+        Memory::{VirtualProtect, PAGE_EXECUTE_READWRITE},
+        SystemServices::IMAGE_DOS_HEADER,
         Threading::GetCurrentProcessId,
     },
 };
-use windows::Win32::System::Diagnostics::Debug::IMAGE_NT_HEADERS32;
-use windows::Win32::System::SystemServices::IMAGE_DOS_HEADER;
 
 pub fn get_entry_point(base_address: usize) -> u32 {
     unsafe {
@@ -78,7 +79,14 @@ pub fn find_module_name_that_owns_address_list(
             let module_name = &mut module_names[index];
             if module_name.is_none() {
                 let address = address as *const u8;
-                if address > module_entry32.modBaseAddr && address < unsafe { module_entry32.modBaseAddr.add(module_entry32.modBaseSize as usize) } {
+                if address > module_entry32.modBaseAddr
+                    && address
+                        < unsafe {
+                            module_entry32
+                                .modBaseAddr
+                                .add(module_entry32.modBaseSize as usize)
+                        }
+                {
                     *module_name = Some(String::from_utf16_lossy(&module_entry32.szModule));
                 }
             }

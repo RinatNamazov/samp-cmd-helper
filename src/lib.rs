@@ -9,22 +9,22 @@
  *
  *****************************************************************************/
 
+#[cfg(debug_assertions)]
+use windows::Win32::System::Console::AllocConsole;
 use windows::Win32::{
     Foundation::{BOOL, FALSE, HMODULE, TRUE},
     System::{LibraryLoader::DisableThreadLibraryCalls, SystemServices::DLL_PROCESS_ATTACH},
 };
-#[cfg(debug_assertions)]
-use windows::Win32::System::Console::AllocConsole;
 
+mod cmd_storage;
+mod cppstd;
+mod errors;
+mod gta;
+mod gui;
 mod plugin;
 mod samp;
 mod sampfuncs;
-mod errors;
-mod gta;
 mod utils;
-mod cppstd;
-mod gui;
-mod cmd_storage;
 
 #[no_mangle]
 extern "stdcall" fn DllMain(instance: HMODULE, reason: u32, _reserved: *mut ()) -> BOOL {

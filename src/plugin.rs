@@ -17,23 +17,25 @@ use std::time::{Duration, SystemTime};
 use egui_d3d9::EguiDx9;
 use vmt_hook::VTableHook;
 use windows::{
-    core::{HRESULT, w},
+    core::{w, HRESULT},
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::{
-            Direct3D9::{D3DPRESENT_PARAMETERS, IDirect3DDevice9},
+            Direct3D9::{IDirect3DDevice9, D3DPRESENT_PARAMETERS},
             Gdi::RGNDATA,
         },
         System::LibraryLoader::GetModuleHandleW,
+        UI::WindowsAndMessaging::{
+            CallWindowProcA, SetWindowLongPtrA, GWLP_WNDPROC, WM_LBUTTONDOWN, WNDPROC,
+        },
     },
 };
-use windows::Win32::UI::WindowsAndMessaging::{CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_LBUTTONDOWN, WNDPROC};
 
-use crate::{gta, samp, sampfuncs, utils};
-use crate::cmd_storage::{Categories, Category, CategoryKey, cmd_with_prefix, ModuleMap};
+use crate::cmd_storage::{cmd_with_prefix, Categories, Category, CategoryKey, ModuleMap};
 use crate::errors::Error;
 use crate::gui::Ui;
 use crate::sampfuncs::{CmdOwner, CommandType};
+use crate::{gta, samp, sampfuncs, utils};
 
 type FnPresent = extern "stdcall" fn(
     IDirect3DDevice9,
@@ -114,7 +116,14 @@ impl Plugin {
         let samp_cmds: HashMap<String, Vec<String>> = self.get_samp_commands_grouped_by_module();
         let samp_modules = samp_cmds
             .into_iter()
-            .map(|(module, cmds)| (module, cmds.iter().map(|cmd| (cmd_with_prefix(cmd), String::default())).collect()))
+            .map(|(module, cmds)| {
+                (
+                    module,
+                    cmds.iter()
+                        .map(|cmd| (cmd_with_prefix(cmd), String::default()))
+                        .collect(),
+                )
+            })
             .collect();
         let samp = &mut self.commands.samp;
         samp.modules = samp_modules;
@@ -125,9 +134,11 @@ impl Plugin {
             let mut cleo_modules = ModuleMap::new();
 
             fn convert(modules: &mut ModuleMap, module: String, cmds: Vec<String>) {
-                modules
-                    .entry(module)
-                    .or_insert(cmds.iter().map(|cmd| (cmd_with_prefix(cmd), String::default())).collect());
+                modules.entry(module).or_insert(
+                    cmds.iter()
+                        .map(|cmd| (cmd_with_prefix(cmd), String::default()))
+                        .collect(),
+                );
             }
 
             for (module, v) in sf_cmds {
@@ -174,8 +185,12 @@ impl Plugin {
     fn init_ui(&mut self) {
         if let Some(device_hook) = &self.d3d9_hook {
             let gui = EguiDx9::<Ui>::init(
-                device_hook.object(), gta::get_window_handle(),
-                Ui::render_ui, Ui::new(), true);
+                device_hook.object(),
+                gta::get_window_handle(),
+                Ui::render_ui,
+                Ui::new(),
+                true,
+            );
 
             Ui::init_style(gui.ctx());
 
@@ -207,7 +222,13 @@ impl Plugin {
         gui.present(&device);
 
         let original_present = plugin.original_present.unwrap_unchecked();
-        original_present(device, source_rect, dest_rect, dest_window_override, dirty_region)
+        original_present(
+            device,
+            source_rect,
+            dest_rect,
+            dest_window_override,
+            dirty_region,
+        )
     }
 
     unsafe extern "stdcall" fn hk_wnd_proc(
@@ -224,7 +245,13 @@ impl Plugin {
             // To prevent the chat from closing when clicking on our interface.
             LRESULT(1)
         } else {
-            CallWindowProcA(plugin.original_wnd_proc.unwrap_unchecked(), hwnd, msg, wparam, lparam)
+            CallWindowProcA(
+                plugin.original_wnd_proc.unwrap_unchecked(),
+                hwnd,
+                msg,
+                wparam,
+                lparam,
+            )
         }
     }
 
@@ -256,7 +283,9 @@ impl Plugin {
         module_commands
     }
 
-    fn get_sampfuncs_commands_grouped(&self) -> Option<HashMap<String, (CommandType, Vec<String>)>> {
+    fn get_sampfuncs_commands_grouped(
+        &self,
+    ) -> Option<HashMap<String, (CommandType, Vec<String>)>> {
         if !sampfuncs::is_initialized() {
             return None;
         }
@@ -329,7 +358,9 @@ pub fn initialize() -> Result<(), Error> {
     const ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE: usize = 0x53EA8E;
 
     let current_byte = unsafe { *(ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE as *const u8) };
-    if current_byte != 0xE8 /* call opcode */ {
+    if current_byte != 0xE8
+    /* call opcode */
+    {
         return Err(Error::MaybeInvalidGameOrPluginConflicting);
     }
 
@@ -342,11 +373,16 @@ pub fn initialize() -> Result<(), Error> {
         Some(samp_version) => unsafe {
             PLUGIN = Some(Plugin::new(samp_base_address, samp_version));
 
-            FUNC_GTA_DEFINED_STATE = Some(std::mem::transmute(utils::extract_call_target_address(ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE)));
-            utils::patch_call_address(ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE, hk_defined_state as usize);
+            FUNC_GTA_DEFINED_STATE = Some(std::mem::transmute(utils::extract_call_target_address(
+                ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE,
+            )));
+            utils::patch_call_address(
+                ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE,
+                hk_defined_state as usize,
+            );
 
             Ok(())
-        }
+        },
         None => Err(Error::IncompatibleSampVersion),
     }
 }

@@ -10,9 +10,10 @@
  *****************************************************************************/
 
 use std::ffi::c_void;
-
-use windows::core::{s, w};
-use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+use windows::{
+    core::{s, w},
+    Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress},
+};
 
 use crate::cppstd::{StdString, StdVector};
 use crate::errors::Error;
@@ -91,7 +92,10 @@ static mut GET_SCM_THREAD_NAME: Option<extern "thiscall" fn(*const ScmThread) ->
 
 macro_rules! def_fn {
     ($handle:ident, $var:ident, $symbol:literal) => {
-        $var = Some(std::mem::transmute(GetProcAddress($handle, s!($symbol)).ok_or(Error::FunctionNotFound($symbol.to_string()))?));
+        $var = Some(std::mem::transmute(
+            GetProcAddress($handle, s!($symbol))
+                .ok_or(Error::FunctionNotFound($symbol.to_string()))?,
+        ));
     };
 }
 

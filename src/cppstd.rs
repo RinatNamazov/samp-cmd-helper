@@ -78,7 +78,10 @@ impl StdString {
     pub fn to_string(&self) -> String {
         unsafe {
             if self.size < 16 {
-                CStr::from_bytes_until_nul(&self.str.buf).unwrap().to_string_lossy().to_string()
+                CStr::from_bytes_until_nul(&self.str.buf)
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
             } else {
                 CStr::from_ptr(self.str.ptr).to_string_lossy().to_string()
             }

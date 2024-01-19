@@ -1,9 +1,11 @@
 use crate::cmd_storage::CMD_PREFIX;
-use std::ffi::CStr;
-use egui::{Color32, FontData, FontDefinitions, FontFamily, FontId, FontTweak, Key, Label, RichText, Rounding, Sense, TextStyle};
-use egui::epaint::Shadow;
-use crate::{gta, samp};
 use crate::plugin::Plugin;
+use crate::{gta, samp};
+use egui::{
+    epaint::Shadow, Color32, FontData, FontDefinitions, FontFamily, FontId, FontTweak, Key, Label,
+    RichText, Rounding, Sense, TextStyle,
+};
+use std::ffi::CStr;
 
 pub struct Ui {}
 
@@ -21,10 +23,9 @@ impl Ui {
     fn add_font(fonts: &mut FontDefinitions, name: &str, font: &'static [u8]) {
         let name = name.to_string();
         let tweak = FontTweak::default();
-        fonts.font_data.insert(
-            name.clone(),
-            FontData::from_static(font).tweak(tweak),
-        );
+        fonts
+            .font_data
+            .insert(name.clone(), FontData::from_static(font).tweak(tweak));
         fonts
             .families
             .get_mut(&FontFamily::Proportional)
@@ -39,7 +40,11 @@ impl Ui {
 
     fn setup_custom_fonts(ctx: &egui::Context) {
         let mut fonts = FontDefinitions::default();
-        Self::add_font(&mut fonts, "Segoe UI Bold", include_bytes!("C:\\Windows\\Fonts\\segoeuib.ttf"));
+        Self::add_font(
+            &mut fonts,
+            "Segoe UI Bold",
+            include_bytes!("C:\\Windows\\Fonts\\segoeuib.ttf"),
+        );
         ctx.set_fonts(fonts);
     }
 
@@ -53,7 +58,8 @@ impl Ui {
             (TextStyle::Monospace, FontId::new(16.0, Monospace)),
             (TextStyle::Button, FontId::new(16.5, Proportional)),
             (TextStyle::Small, FontId::new(8.0, Proportional)),
-        ].into();
+        ]
+        .into();
         ctx.set_style(style);
     }
 
@@ -90,15 +96,24 @@ impl Ui {
         let chat_contains_cmd = chat_input.starts_with(CMD_PREFIX);
 
         // Don't draw empty list.
-        if (samp_input.total_recall == 0 && !chat_contains_cmd) || (chat_contains_cmd && Plugin::get().commands().is_empty()) {
+        if (samp_input.total_recall == 0 && !chat_contains_cmd)
+            || (chat_contains_cmd && Plugin::get().commands().is_empty())
+        {
             return;
         }
 
         let pos = samp_input.edit_box().position;
-        let pos = [pos[0] as f32, (pos[1] + samp_input.edit_box().height + 5) as f32];
+        let pos = [
+            pos[0] as f32,
+            (pos[1] + samp_input.edit_box().height + 5) as f32,
+        ];
 
         // So that each window has its own size.
-        let key = if chat_contains_cmd { "#Commands" } else { "#Recalls" };
+        let key = if chat_contains_cmd {
+            "#Commands"
+        } else {
+            "#Recalls"
+        };
         egui::containers::Window::new(key)
             .fixed_pos(pos)
             .title_bar(false)
@@ -115,14 +130,12 @@ impl Ui {
     }
 
     fn draw_commands(&self, ui: &mut egui::Ui, chat_input: &String, samp_input: &mut samp::Input) {
-        egui::Grid::new("cmds")
-            .min_col_width(200.0)
-            .show(ui, |ui| {
-                self.draw_cmds_header(ui);
-                ui.end_row();
-                self.draw_cmds_body(ui, &chat_input, samp_input);
-                ui.end_row();
-            });
+        egui::Grid::new("cmds").min_col_width(200.0).show(ui, |ui| {
+            self.draw_cmds_header(ui);
+            ui.end_row();
+            self.draw_cmds_body(ui, &chat_input, samp_input);
+            ui.end_row();
+        });
     }
 
     fn draw_cmds_header(&self, ui: &mut egui::Ui) {
@@ -143,25 +156,27 @@ impl Ui {
 
             ui.vertical(|ui| {
                 for (name, commands) in category.modules.iter() {
-                    egui::CollapsingHeader::new(name).default_open(true).show(ui, |ui| {
-                        for (cmd, description) in commands.iter() {
-                            let text = if chat_input.is_empty() || cmd.starts_with(chat_input) {
-                                RichText::new(cmd)
-                            } else {
-                                RichText::new(cmd).weak()
-                            };
+                    egui::CollapsingHeader::new(name)
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            for (cmd, description) in commands.iter() {
+                                let text = if chat_input.is_empty() || cmd.starts_with(chat_input) {
+                                    RichText::new(cmd)
+                                } else {
+                                    RichText::new(cmd).weak()
+                                };
 
-                            let label = ui.add(Label::new(text).sense(Sense::click()));
+                                let label = ui.add(Label::new(text).sense(Sense::click()));
 
-                            if label.clicked() {
-                                input.edit_box().set_text(cmd.as_str());
+                                if label.clicked() {
+                                    input.edit_box().set_text(cmd.as_str());
+                                }
+
+                                if !description.is_empty() {
+                                    label.on_hover_text(description);
+                                }
                             }
-
-                            if !description.is_empty() {
-                                label.on_hover_text(description);
-                            }
-                        }
-                    });
+                        });
                 }
             });
         }
@@ -170,11 +185,10 @@ impl Ui {
     fn draw_copyright(&self, ui: &mut egui::Ui) {
         ui.separator();
         ui.vertical_centered(|ui| {
-            ui.strong("Copyright © Rinat Namazov")
-                .on_hover_ui(|ui| {
-                    ui.label(concat!("SA-MP Command Helper v", env!("CARGO_PKG_VERSION")));
-                    ui.label("https://rinwares.com");
-                });
+            ui.strong("Copyright © Rinat Namazov").on_hover_ui(|ui| {
+                ui.label(concat!("SA-MP Command Helper v", env!("CARGO_PKG_VERSION")));
+                ui.label("https://rinwares.com");
+            });
         });
     }
 
@@ -187,11 +201,12 @@ impl Ui {
             for i in 0..input.total_recall as usize {
                 if let Ok(recall) = CStr::from_bytes_until_nul(&input.recall_buffer[i]) {
                     if let Ok(text) = recall.to_str() {
-                        let text = if input.current_recall == -1 || i == input.current_recall as usize {
-                            RichText::new(text)
-                        } else {
-                            RichText::new(text).weak()
-                        };
+                        let text =
+                            if input.current_recall == -1 || i == input.current_recall as usize {
+                                RichText::new(text)
+                            } else {
+                                RichText::new(text).weak()
+                            };
 
                         let label = ui.add(Label::new(text).sense(Sense::click()));
 

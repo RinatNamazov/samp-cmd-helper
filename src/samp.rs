@@ -11,8 +11,7 @@
 
 use std::ffi::{c_char, c_void, CStr, CString};
 
-use windows::Win32::Foundation::BOOL;
-use windows::Win32::Graphics::Direct3D9::IDirect3DDevice9;
+use windows::Win32::{Foundation::BOOL, Graphics::Direct3D9::IDirect3DDevice9};
 
 use crate::utils::get_entry_point;
 
@@ -49,8 +48,12 @@ pub fn get_version(base_address: usize) -> Option<Version> {
 pub fn initialize(base_address: usize, version: Version) {
     unsafe {
         INPUT = Some(*((base_address + get_input_offset(version)) as *mut *mut Input));
-        DXUT_EDIT_BOX_GET_TEXT = Some(std::mem::transmute(base_address + get_offset_of_dxut_edit_box_get_text(version)));
-        DXUT_EDIT_BOX_SET_TEXT = Some(std::mem::transmute(base_address + get_offset_of_dxut_edit_box_set_text(version)));
+        DXUT_EDIT_BOX_GET_TEXT = Some(std::mem::transmute(
+            base_address + get_offset_of_dxut_edit_box_get_text(version),
+        ));
+        DXUT_EDIT_BOX_SET_TEXT = Some(std::mem::transmute(
+            base_address + get_offset_of_dxut_edit_box_set_text(version),
+        ));
     }
 }
 
@@ -116,7 +119,7 @@ impl Input {
         unsafe {
             match INPUT {
                 Some(v) => Some(&mut *v),
-                None => None
+                None => None,
             }
         }
     }
