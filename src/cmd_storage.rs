@@ -36,18 +36,23 @@ pub enum CategoryKey {
     Samp,
     SfPlugin,
     Cleo,
+    Lua,
 }
 
 pub struct Categories {
-    pub order: [CategoryKey; 3],
+    pub order: [CategoryKey; 4],
     pub samp: Category,
     pub sf: Category,
     pub cleo: Category,
+    pub lua: Category,
 }
 
 impl Categories {
     pub fn is_empty(&self) -> bool {
-        self.samp.modules.is_empty() && self.sf.modules.is_empty() && self.cleo.modules.is_empty()
+        self.samp.modules.is_empty()
+            && self.sf.modules.is_empty()
+            && self.cleo.modules.is_empty()
+            && self.lua.modules.is_empty()
     }
 
     pub fn iter(&self) -> CategoriesIterator {
@@ -66,6 +71,7 @@ impl std::ops::Index<&CategoryKey> for Categories {
             CategoryKey::Samp => &self.samp,
             CategoryKey::SfPlugin => &self.sf,
             CategoryKey::Cleo => &self.cleo,
+            CategoryKey::Lua => &self.lua,
         }
     }
 }

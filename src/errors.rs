@@ -19,6 +19,7 @@ pub enum Error {
     MaybeInvalidGameOrPluginConflicting,
     SampNotLoaded(WindowsError),
     IncompatibleSampVersion,
+    IncompatibleMoonLoaderVersion(u32),
 }
 
 impl fmt::Display for Error {
@@ -33,6 +34,11 @@ impl fmt::Display for Error {
             }
             Error::SampNotLoaded(e) => write!(f, "Library 'samp.dll' not found. WinAPI: {}", e),
             Error::IncompatibleSampVersion => write!(f, "Incompatible SA-MP version"),
+            Error::IncompatibleMoonLoaderVersion(ep) => write!(
+                f,
+                "Incompatible MoonLoader version. Entry Point: {:#04X}",
+                ep
+            ),
         }
     }
 }

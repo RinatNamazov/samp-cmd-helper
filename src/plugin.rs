@@ -31,11 +31,13 @@ use windows::{
     },
 };
 
-use crate::cmd_storage::{cmd_with_prefix, Categories, Category, CategoryKey, ModuleMap};
+use crate::cmd_storage::{
+    cmd_with_prefix, Categories, Category, CategoryKey, CommandMap, ModuleMap,
+};
 use crate::errors::Error;
 use crate::gui::Ui;
 use crate::sampfuncs::{CmdOwner, CommandType};
-use crate::{gta, samp, sampfuncs, utils};
+use crate::{gta, moonloader, samp, sampfuncs, utils};
 
 type FnPresent = extern "stdcall" fn(
     IDirect3DDevice9,
@@ -75,10 +77,16 @@ impl Plugin {
             d3d9_hook: None,
             gui: None,
             commands: Categories {
-                order: [CategoryKey::Samp, CategoryKey::SfPlugin, CategoryKey::Cleo],
+                order: [
+                    CategoryKey::Samp,
+                    CategoryKey::SfPlugin,
+                    CategoryKey::Cleo,
+                    CategoryKey::Lua,
+                ],
                 samp: Category::new("SA-MP".to_string()),
                 sf: Category::new("SF".to_string()),
                 cleo: Category::new("CLEO".to_string()),
+                lua: Category::new("Lua".to_string()),
             },
             original_wnd_proc: None,
             original_reset: None,
@@ -129,7 +137,12 @@ impl Plugin {
         samp.modules = samp_modules;
         samp.is_visible = true;
 
-        if let Some(sf_cmds) = self.get_sampfuncs_commands_grouped() {
+        if let Some(mut sf_cmds) = self.get_sampfuncs_commands_grouped() {
+            const MOONLOADER_SCM_THREAD: &str = "moonldr.cs";
+            if moonloader::is_initialized() && sf_cmds.contains_key(MOONLOADER_SCM_THREAD) {
+                sf_cmds.remove(MOONLOADER_SCM_THREAD);
+            }
+
             let mut sf_modules = ModuleMap::new();
             let mut cleo_modules = ModuleMap::new();
 
@@ -159,6 +172,36 @@ impl Plugin {
                 let cleo = &mut self.commands.cleo;
                 cleo.modules = cleo_modules;
                 cleo.is_visible = true;
+            }
+        }
+    }
+
+    pub fn add_lua_command(&mut self, module: String, command: &str) {
+        let category = &mut self.commands.lua;
+        category.is_visible = true;
+        category
+            .modules
+            .entry(module)
+            .or_insert(CommandMap::from([(
+                cmd_with_prefix(command),
+                String::default(),
+            )]))
+            .insert(cmd_with_prefix(command), String::default());
+    }
+
+    pub fn remove_lua_command(&mut self, script_name: &str, command: &str) {
+        let category = &mut self.commands.lua.modules;
+        if let Some(module) = category.get_mut(script_name) {
+            module.remove(&cmd_with_prefix(command));
+
+            // Don't display script without command.
+            if module.is_empty() {
+                category.remove(script_name);
+
+                // Don't display Lua category without scripts.
+                if category.is_empty() {
+                    self.commands.lua.is_visible = false;
+                }
             }
         }
     }
@@ -372,6 +415,12 @@ pub fn initialize() -> Result<(), Error> {
     match samp::get_version(samp_base_address) {
         Some(samp_version) => unsafe {
             PLUGIN = Some(Plugin::new(samp_base_address, samp_version));
+
+            // We can work without this module.
+            // Hooks must be installed before ML starts loading scripts.
+            if let Err(e) = moonloader::initialize() {
+                eprintln!("moonloader::initialize: {}", e);
+            }
 
             FUNC_GTA_DEFINED_STATE = Some(std::mem::transmute(utils::extract_call_target_address(
                 ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE,

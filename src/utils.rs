@@ -44,6 +44,12 @@ pub unsafe fn write_memory<T>(address: usize, value: T) {
     VirtualProtect(address as *const c_void, size, vp, &mut vp).unwrap();
 }
 
+pub unsafe fn replace_data_and_return_original<T>(address: usize, value: T) -> T {
+    let original = std::ptr::read(address as *const T);
+    write_memory(address, value);
+    original
+}
+
 pub unsafe fn patch_call_address(address: usize, value: usize) {
     write_memory(address + 1, value - address - 1 - 4);
 }

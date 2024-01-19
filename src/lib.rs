@@ -21,6 +21,7 @@ mod cppstd;
 mod errors;
 mod gta;
 mod gui;
+mod moonloader;
 mod plugin;
 mod samp;
 mod sampfuncs;
