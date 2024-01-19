@@ -1,3 +1,14 @@
+/*****************************************************************************
+ *
+ *  PROJECT:        samp-cmd-helper
+ *  LICENSE:        See LICENSE in the top level directory
+ *  FILE:           gui.rs
+ *  DESCRIPTION:    User interface
+ *  COPYRIGHT:      (c) 2024 RINWARES <rinwares.com>
+ *  AUTHOR:         Rinat Namazov <rinat.namazov@rinwares.com>
+ *
+ *****************************************************************************/
+
 use crate::cmd_storage::CMD_PREFIX;
 use crate::plugin::Plugin;
 use crate::{gta, samp};

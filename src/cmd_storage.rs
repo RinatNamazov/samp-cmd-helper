@@ -1,3 +1,14 @@
+/*****************************************************************************
+ *
+ *  PROJECT:        samp-cmd-helper
+ *  LICENSE:        See LICENSE in the top level directory
+ *  FILE:           cmd_storage.rs
+ *  DESCRIPTION:    Command storage structures
+ *  COPYRIGHT:      (c) 2024 RINWARES <rinwares.com>
+ *  AUTHOR:         Rinat Namazov <rinat.namazov@rinwares.com>
+ *
+ *****************************************************************************/
+
 use std::collections::HashMap;
 
 pub const CMD_PREFIX: &str = "/";
