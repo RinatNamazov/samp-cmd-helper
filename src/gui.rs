@@ -19,12 +19,16 @@ use egui::{
 use std::ffi::CStr;
 
 pub struct Ui {
-    cmds_height: f32
+    cmds_height: f32,
+    cmds_width: f32,
 }
 
 impl Ui {
     pub fn new() -> Self {
-        Self { cmds_height: 64.0 }
+        Self {
+            cmds_height: 64.0,
+            cmds_width: 64.0,
+        }
     }
 
     pub fn init_style(ctx: &egui::Context) {
@@ -123,12 +127,15 @@ impl Ui {
 
         // So that each window has its own size.
         let key = if chat_contains_cmd {
-            "#Commands"
+            "Commands"
         } else {
-            "#Recalls"
+            "Recalls"
         };
+        let width = this.calc_chat_input_width(samp_input);
         egui::containers::Window::new(key)
             .fixed_pos(pos)
+            .min_width(width)
+            .max_width(width)
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
@@ -142,13 +149,34 @@ impl Ui {
             });
     }
 
-    fn draw_commands(&mut self, ui: &mut egui::Ui, chat_input: &String, samp_input: &mut samp::Input) {
-        egui::Grid::new("cmds").min_col_width(200.0).show(ui, |ui| {
-            self.draw_cmds_header(ui);
-            ui.end_row();
-            self.draw_cmds_body(ui, &chat_input, samp_input);
-            ui.end_row();
-        });
+    fn calc_chat_input_width(&self, input: &mut samp::Input) -> f32 {
+        let eb = input.edit_box();
+        (eb.width - eb.position[0]) as f32
+    }
+
+    fn calc_cmds_col_width(&self, input: &mut samp::Input) -> f32 {
+        let columns_count = Plugin::get().commands().category_count();
+        self.calc_chat_input_width(input) / columns_count as f32
+    }
+
+    fn draw_commands(
+        &mut self,
+        ui: &mut egui::Ui,
+        chat_input: &String,
+        samp_input: &mut samp::Input,
+    ) {
+        self.cmds_width = self.calc_cmds_col_width(samp_input);
+
+        egui::Grid::new("cmds")
+            .min_col_width(self.cmds_width)
+            .max_col_width(self.cmds_width)
+            .show(ui, |ui| {
+                self.draw_cmds_header(ui);
+                ui.end_row();
+
+                self.draw_cmds_body(ui, &chat_input, samp_input);
+                ui.end_row();
+            });
     }
 
     fn draw_cmds_header(&self, ui: &mut egui::Ui) {
@@ -174,32 +202,37 @@ impl Ui {
                 .id_source(&category.name)
                 .min_scrolled_height(self.cmds_height)
                 .show(ui, |ui| {
-                ui.vertical(|ui| {
-                    for (name, commands) in category.modules.iter() {
-                        egui::CollapsingHeader::new(name)
-                            .default_open(true)
-                            .show(ui, |ui| {
-                                for (cmd, description) in commands.iter() {
-                                    let text = if chat_input.is_empty() || cmd.starts_with(chat_input) {
-                                        RichText::new(cmd)
-                                    } else {
-                                        RichText::new(cmd).weak()
-                                    };
+                    ui.set_min_width(self.cmds_width);
+                    ui.vertical(|ui| {
+                        for (name, commands) in category.modules.iter() {
+                            egui::CollapsingHeader::new(name)
+                                .default_open(true)
+                                .show(ui, |ui| {
+                                    for (cmd, description) in commands.iter() {
+                                        let text = if chat_input.is_empty()
+                                            || cmd.starts_with(chat_input)
+                                        {
+                                            RichText::new(cmd)
+                                        } else {
+                                            RichText::new(cmd).weak()
+                                        };
 
-                                    let label = ui.add(Label::new(text).sense(Sense::click()));
+                                        let label = ui.add(Label::new(text).sense(Sense::click()));
 
-                                    if label.clicked() {
-                                        input.edit_box().set_text(cmd.as_str());
+                                        if label.clicked() {
+                                            input.edit_box().set_text(cmd.as_str());
+                                        }
+
+                                        if !description.is_empty() {
+                                            label.on_hover_text(description);
+                                        }
                                     }
-
-                                    if !description.is_empty() {
-                                        label.on_hover_text(description);
-                                    }
-                                }
-                            });
-                    }
-                });
-            }).content_size.y;
+                                });
+                        }
+                    });
+                })
+                .content_size
+                .y;
 
             if content_height > max_content_height {
                 max_content_height = content_height;

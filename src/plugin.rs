@@ -26,11 +26,11 @@ use windows::{
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::WindowsAndMessaging::{
-            CallWindowProcA, SetWindowLongPtrA, GWLP_WNDPROC, WM_LBUTTONDOWN, WNDPROC,
+            CallWindowProcA, SetWindowLongPtrA, GWLP_WNDPROC, WM_LBUTTONDOWN, WM_MOUSEWHEEL,
+            WNDPROC,
         },
     },
 };
-use windows::Win32::UI::WindowsAndMessaging::WM_MOUSEWHEEL;
 
 use crate::cmd_storage::{
     cmd_with_prefix, Categories, Category, CategoryKey, CommandMap, ModuleMap,
@@ -402,9 +402,8 @@ pub fn initialize() -> Result<(), Error> {
     const ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE: usize = 0x53EA8E;
 
     let current_byte = unsafe { *(ADDRESS_OF_CALL_DEFINED_STATE_IN_IDLE as *const u8) };
-    if current_byte != 0xE8
-    /* call opcode */
-    {
+    // call opcode
+    if current_byte != 0xE8 {
         return Err(Error::MaybeInvalidGameOrPluginConflicting);
     }
 

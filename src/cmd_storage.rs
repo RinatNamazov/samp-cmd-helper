@@ -55,6 +55,10 @@ impl Categories {
             && self.lua.modules.is_empty()
     }
 
+    pub fn category_count(&self) -> usize {
+        self.iter().filter(|c| c.is_visible).count()
+    }
+
     pub fn iter(&self) -> CategoriesIterator {
         CategoriesIterator {
             categories: self,
