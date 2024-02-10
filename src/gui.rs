@@ -17,6 +17,7 @@ use egui::{
     RichText, Rounding, Sense, TextStyle,
 };
 use std::ffi::CStr;
+use local_encoding::{Encoder, Encoding};
 
 pub struct Ui {
     cmds_height: f32,
@@ -261,7 +262,7 @@ impl Ui {
         ui.indent(ui.id(), |ui| {
             for i in 0..input.total_recall as usize {
                 if let Ok(recall) = CStr::from_bytes_until_nul(&input.recall_buffer[i]) {
-                    if let Ok(text) = recall.to_str() {
+                    if let Ok(text) = Encoding::ANSI.to_string(recall.to_bytes_with_nul()) {
                         let text =
                             if input.current_recall == -1 || i == input.current_recall as usize {
                                 RichText::new(text)
