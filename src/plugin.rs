@@ -30,6 +30,7 @@ use windows::{
         },
     },
 };
+use windows::Win32::UI::WindowsAndMessaging::WM_MOUSEWHEEL;
 
 use crate::cmd_storage::{
     cmd_with_prefix, Categories, Category, CategoryKey, CommandMap, ModuleMap,
@@ -284,7 +285,7 @@ impl Plugin {
         let gui = plugin.gui.as_mut().unwrap_unchecked();
         gui.wnd_proc(msg, wparam, lparam);
 
-        if msg == WM_LBUTTONDOWN && gui.ctx().wants_pointer_input() {
+        if gui.ctx().wants_pointer_input() && (msg == WM_LBUTTONDOWN || msg == WM_MOUSEWHEEL) {
             // To prevent the chat from closing when clicking on our interface.
             LRESULT(1)
         } else {

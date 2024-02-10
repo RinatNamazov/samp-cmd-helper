@@ -18,11 +18,13 @@ use egui::{
 };
 use std::ffi::CStr;
 
-pub struct Ui {}
+pub struct Ui {
+    cmds_height: f32
+}
 
 impl Ui {
     pub fn new() -> Self {
-        Self {}
+        Self { cmds_height: 64.0 }
     }
 
     pub fn init_style(ctx: &egui::Context) {
@@ -140,7 +142,7 @@ impl Ui {
             });
     }
 
-    fn draw_commands(&self, ui: &mut egui::Ui, chat_input: &String, samp_input: &mut samp::Input) {
+    fn draw_commands(&mut self, ui: &mut egui::Ui, chat_input: &String, samp_input: &mut samp::Input) {
         egui::Grid::new("cmds").min_col_width(200.0).show(ui, |ui| {
             self.draw_cmds_header(ui);
             ui.end_row();
@@ -159,38 +161,53 @@ impl Ui {
         }
     }
 
-    fn draw_cmds_body(&self, ui: &mut egui::Ui, chat_input: &String, input: &mut samp::Input) {
+    fn draw_cmds_body(&mut self, ui: &mut egui::Ui, chat_input: &String, input: &mut samp::Input) {
+        let cursor_top = ui.cursor().top();
+        let mut max_content_height = 0.;
+
         for category in Plugin::get().commands().iter() {
             if !category.is_visible {
                 continue;
             }
 
-            ui.vertical(|ui| {
-                for (name, commands) in category.modules.iter() {
-                    egui::CollapsingHeader::new(name)
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            for (cmd, description) in commands.iter() {
-                                let text = if chat_input.is_empty() || cmd.starts_with(chat_input) {
-                                    RichText::new(cmd)
-                                } else {
-                                    RichText::new(cmd).weak()
-                                };
+            let content_height = egui::ScrollArea::vertical()
+                .id_source(&category.name)
+                .min_scrolled_height(self.cmds_height)
+                .show(ui, |ui| {
+                ui.vertical(|ui| {
+                    for (name, commands) in category.modules.iter() {
+                        egui::CollapsingHeader::new(name)
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                for (cmd, description) in commands.iter() {
+                                    let text = if chat_input.is_empty() || cmd.starts_with(chat_input) {
+                                        RichText::new(cmd)
+                                    } else {
+                                        RichText::new(cmd).weak()
+                                    };
 
-                                let label = ui.add(Label::new(text).sense(Sense::click()));
+                                    let label = ui.add(Label::new(text).sense(Sense::click()));
 
-                                if label.clicked() {
-                                    input.edit_box().set_text(cmd.as_str());
+                                    if label.clicked() {
+                                        input.edit_box().set_text(cmd.as_str());
+                                    }
+
+                                    if !description.is_empty() {
+                                        label.on_hover_text(description);
+                                    }
                                 }
+                            });
+                    }
+                });
+            }).content_size.y;
 
-                                if !description.is_empty() {
-                                    label.on_hover_text(description);
-                                }
-                            }
-                        });
-                }
-            });
+            if content_height > max_content_height {
+                max_content_height = content_height;
+            }
         }
+
+        let max_screen_height = ui.input(|i| i.screen_rect.height()) - cursor_top - 100.;
+        self.cmds_height = max_content_height.min(max_screen_height);
     }
 
     fn draw_copyright(&self, ui: &mut egui::Ui) {
