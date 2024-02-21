@@ -347,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "samp-cmd-helper"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "egui",
  "egui-d3d9",
